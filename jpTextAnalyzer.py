@@ -6,13 +6,17 @@ from janome.tokenizer import Tokenizer
 
 
 class Analyzer:
-    DBPATH = 'markov.sqlite3'
     def __init__(self, text=None):
         self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
         self.nodes = []
+        self.DBPATH = 'markov.sqlite3'
 
         if text:
             self.analyze(text)
+
+    def _getDb(self):
+        self._logger.debug('connecting database "{}"'.format(self.DBPATH))
+        return sqlite3.connect(self.DBPATH)
 
     def analyze(self, text):
         self._logger.debug('analyzing')
@@ -49,6 +53,9 @@ class Analyzer:
         return result
 
     def makeMarkov(self, wordNum=1, dic={}, key_tuple=False, value_simple=True):
+        if wordNum <= 0:
+            self._logger.error('wordNum must be greater than 1')
+            raise Exception('wordNum must be greater than 1')
         self._logger.debug('making markov : option (wordNum:{}, dict input:{}, key_tuple:{} value\simple:{}'.format(wordNum, dic=={}, key_tuple, value_simple))
         num = wordNum + 1
         result = dic
@@ -71,37 +78,113 @@ class Analyzer:
         self._logger.debug('making markov is completed')
         return result
 
-    def saveMarkov_sqlite(self, wordNum=0):
+    def saveMarkov_sqlite(self, wordNum=1):
         self._logger.debug('saving markov to database')
         markov = self.makeMarkov(wordNum, key_tuple=False, value_simple=False)
-        self._logger.debug('connecting to database "{}"'.format(self.DBPATH))
-        db = sqlite3.connect(self.DBPATH)
-        for in_key, in_value in markov.items():
-            res = db.execute('SELECT value FROM items WHERE key = ?', (in_key,)).fetchone()
-            if res:
-                out_value = json.loads(res[0])
-            else:
-                db.execute('INSERT INTO items VALUES(?, "{}")', (in_key,))
-                out_value = {}
-            for in_value_key in in_value.keys():
-                if in_value_key not in out_value:
-                    out_value[in_value_key] = 0
-                out_value[in_value_key] += in_value[in_value_key]
+        
+        self.checkDb()
 
-            db.execute('UPDATE items SET value = ? WHERE key = ?', (json.dumps(out_value), in_key))
-        self._logger.debug('committing to database')
-        db.commit()
-        db.close()
-        self._logger.debug('database is closed')
+        db = None
+        try:
+            db = self._getDb()
+            for in_key, in_value in markov.items():
+                res = db.execute('SELECT value FROM items WHERE key = ?', (in_key,)).fetchone()
+                if res:
+                    out_value = json.loads(res[0])
+                else:
+                    db.execute('INSERT INTO items VALUES(?, "{}")', (in_key,))
+                    out_value = {}
+                for in_value_key in in_value.keys():
+                    if in_value_key not in out_value:
+                        out_value[in_value_key] = 0
+                    out_value[in_value_key] += in_value[in_value_key]
+
+                db.execute('UPDATE items SET value = ? WHERE key = ?', (json.dumps(out_value), in_key))
+            self._logger.debug('committing to database')
+            db.commit()
+        except:
+            self._logger.error('database writing error')
+            raise
+        finally:
+            if db:
+                db.close()
+                self._logger.debug('database is closed')
+
         self._logger.debug('saving is complete')
         return
 
     def initDb(self):
-        db = sqlite3.connect(self.DBPATH)
-        db.execute('CREATE TABLE items(key TEXT PRIMARY KEY, value TEXT);')
-        db.commit()
-        db.close()
+        self._logger.debug('initializing database')
+        db = None
+        try:
+            db = self._getDb()
+            db.execute('CREATE TABLE items(key TEXT PRIMARY KEY, value TEXT);')
+            db.commit()
+        except:
+            self.logger.error('database initializing error')
+        finally:
+            if db:
+                db.close()
+                self._logger.debug('database is closed')
+
+    def checkDb(self):
+        self._logger.debug('checking database')
+        try:
+            db = self._getDb()
+            db.execute('select * FROM items LIMIT 1').fetchone()
+            initialized = True
+        except sqlite3.OperationalError:
+            self._logger.info('database {} is not initialized')
+            initialized = False
+        finally:
+            if db:
+                db.close()
+                self._logger.debug('database is closed')
+        if not initialized:
+            self.initDb()
+        self._logger.debug('cheking database is completed')
+
+        
             
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('command', type=str, choices=['markov', 'count'], help='コマンドを入力')
+    parser.add_argument('in_file', type=str, help='読み込むファイルパス')
+    parser.add_argument('--word_num', '-n', default=1, type=int, help='解析するときにキーとする単語数')
+    parser.add_argument('--enc', '-e', default='utf-8', type=str, help='読み込むファイルのエンコード')
+    parser.add_argument('--out', '-o', type=str, help='出力ファイルパス。markovの場合はsqlite3、countの場合はテキストファイル')
+    parser.add_argument('--sep', '-s', default=':', type=str, help='出力時にkeyとvalueの間に入れるセパレーター')
+
+    args = parser.parse_args()
+
+    analyzer = Analyzer(open(args.in_file, encoding=args.enc).read())
+
+    if args.command == 'count':
+        logger.debug('単語のカウントを行います')
+
+        count = analyzer.countWord(args.word_num)
+        texts = ''
+        for key, value in count:
+            texts += '{}{}{}'.format(key, args.sep, value) + '\n'
+        if args.out:
+            logger.debug('ファイル書き出し中')
+            f = open(args.out, 'w', encoding='utf-8')
+            f.write(texts)
+            f.close()
+            logger.debug('完了')
+        else:
+            print(texts)
+    elif args.command == 'markov':
+        logger.debug('マルコフ連鎖の作成。sqliteでの出力を行います')
+        if args.out:
+            analyzer.DBPATH = args.out
+        analyzer.saveMarkov_sqlite(args.word_num)
+        logger.debug('sqlite出力完了')
+    logger.debug('すべての操作が完了。')
+            
+
 
 if __name__ == '__main__':
     LOGLEVEL = logging.DEBUG
@@ -112,4 +195,4 @@ if __name__ == '__main__':
     logger.addHandler(streamHandler)
     logger.setLevel(LOGLEVEL)
 
-
+    main()
