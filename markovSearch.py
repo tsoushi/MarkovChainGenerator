@@ -3,9 +3,8 @@ import json
 
 DBPATH = 'markov.sqlite3'
 
-def main():
-    db = sqlite3.connect(DBPATH)
-    keyword = input('キーワード: ')
+def main(dbpath, keyword):
+    db = sqlite3.connect(dbpath)
     print('='*30)
     keyword = '%' + keyword + '%'
 
@@ -18,5 +17,16 @@ def main():
     print('='*30)
 
 if __name__ == '__main__':
-    while 1:
-        main()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('filepath', default=DBPATH, type=str, help='データベースのパス')
+    parser.add_argument('--keyword', '-k', type=str, help='検索キーワード')
+
+    args = parser.parse_args()
+
+    if args.keyword:
+        main(args.filepath, args.keyword)
+    else:
+        while 1:
+            main(args.filepath, input('キーワード: '))
