@@ -82,6 +82,13 @@ class Analyzer:
         self._logger.debug('saving markov to database')
         markov = self.makeMarkov(wordNum, key_tuple=key_tuple, value_simple=False)
         
+        self.mergeMarkovToDb(markov, key_tuple)
+
+        self._logger.debug('saving is complete')
+        return
+
+    def mergeMarkovToDb(self, markov, key_tuple):
+        self._logger.debug('merge to db')
         self.checkDb()
 
         db = None
@@ -112,9 +119,37 @@ class Analyzer:
             if db:
                 db.close()
                 self._logger.debug('database is closed')
+        self._logger.debug('merge is complete')
 
-        self._logger.debug('saving is complete')
-        return
+    def loadMarkovFromDb(self, dbpath, key_tuple=True):
+        self._logger.debug('load markov from db')
+        db = None
+        try:
+            db = sqlite3.connect(dbpath)
+            res = db.execute('SELECT key, value FROM items;').fetchall()
+        except:
+            self._logger.error('database writing error')
+            raise
+        finally:
+            if db:
+                db.close()
+                self._logger.debug('database is closed')
+
+        markov = {}
+        for key, value in res:
+            if key_tuple:
+                key = tuple(json.loads(key))
+            markov[key] = json.loads(value)
+        self._logger.debug('loading is complete')
+
+        return markov
+
+    def mergeDbToDb(self, in_dbpath, key_tuple=True):
+        self._logger.debug('merging DB to DB')
+        markov = self.loadMarkovFromDb(in_dbpath, key_tuple)
+        self.mergeMarkovToDb(markov, key_tuple)
+        self._logger.debug('merging DB to DB is complete')
+
 
     def initDb(self):
         self._logger.debug('initializing database')
@@ -153,39 +188,45 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('command', type=str, choices=['markov', 'count'], help='コマンドを入力')
-    parser.add_argument('in_file', type=str, help='読み込むファイルパス')
-    parser.add_argument('--word_num', '-n', default=1, type=int, help='解析するときにキーとする単語数')
-    parser.add_argument('--enc', '-e', default='utf-8', type=str, help='読み込むファイルのエンコード')
+    parser.add_argument('command', type=str, choices=['markov', 'count', 'merge'], help='コマンドを入力')
+    parser.add_argument('--input', '-i', type=str, help='読み込むファイルパス')
     parser.add_argument('--out', '-o', type=str, help='出力ファイルパス。markovの場合はsqlite3、countの場合はテキストファイル')
+    parser.add_argument('--enc', '-e', default='utf-8', type=str, help='読み込むファイルのエンコード')
+    parser.add_argument('--word_num', '-n', default=3, type=int, help='解析するときにキーとする単語数')
+    parser.add_argument('--key_array', '-k', action='store_false', help='キーを配列形式にしない')
     parser.add_argument('--sep', '-s', default=':', type=str, help='出力時にkeyとvalueの間に入れるセパレーター')
-    parser.add_argument('--key_array', '-k', action='store_true', help='キーを単語ごとに分けた配列形式にする')
 
     args = parser.parse_args()
 
-    analyzer = Analyzer(open(args.in_file, encoding=args.enc).read())
+    if args.command == 'merge':
+        analyzer = Analyzer()
+        analyzer.DBPATH = args.out
+        analyzer.mergeDbToDb(args.input)
 
-    if args.command == 'count':
-        logger.debug('単語のカウントを行います')
+    if args.command in ['count', 'markov']:
+        analyzer = Analyzer(open(args.input, encoding=args.enc).read())
 
-        count = analyzer.countWord(args.word_num)
-        texts = ''
-        for key, value in count:
-            texts += '{}{}{}'.format(key, args.sep, value) + '\n'
-        if args.out:
-            logger.debug('ファイル書き出し中')
-            f = open(args.out, 'w', encoding='utf-8')
-            f.write(texts)
-            f.close()
-            logger.debug('完了')
-        else:
-            print(texts)
-    elif args.command == 'markov':
-        logger.debug('マルコフ連鎖の作成。sqliteでの出力を行います')
-        if args.out:
-            analyzer.DBPATH = args.out
-        analyzer.saveMarkov_sqlite(args.word_num, key_tuple=args.key_array)
-        logger.debug('sqlite出力完了')
+        if args.command == 'count':
+            logger.debug('単語のカウントを行います')
+
+            count = analyzer.countWord(args.word_num)
+            texts = ''
+            for key, value in count:
+                texts += '{}{}{}'.format(key, args.sep, value) + '\n'
+            if args.out:
+                logger.debug('ファイル書き出し中')
+                f = open(args.out, 'w', encoding='utf-8')
+                f.write(texts)
+                f.close()
+                logger.debug('完了')
+            else:
+                print(texts)
+        elif args.command == 'markov':
+            logger.debug('マルコフ連鎖の作成。sqliteでの出力を行います')
+            if args.out:
+                analyzer.DBPATH = args.out
+            analyzer.saveMarkov_sqlite(args.word_num, key_tuple=args.key_array)
+            logger.debug('sqlite出力完了')
     logger.debug('すべての操作が完了。')
             
 
