@@ -78,7 +78,7 @@ class Analyzer:
         self._logger.debug('making markov is completed')
         return result
 
-    def saveMarkov_sqlite(self, wordNum=1, key_tuple=True):
+    def saveMarkov_sqlite(self, wordNum=1, key_tuple=True, title=None):
         self._logger.debug('saving markov to database')
         markov = self.makeMarkov(wordNum, key_tuple=key_tuple, value_simple=False)
         
@@ -103,6 +103,9 @@ class Analyzer:
                     out_value[in_value_key] += in_value[in_value_key]
 
                 db.execute('UPDATE items SET value = ? WHERE key = ?', (json.dumps(out_value, ensure_ascii=False), in_key))
+            if title:
+                #指定されていれば、タイトル名も一緒に保存する。
+                db.execute('INSERT INTO titles(name) VALUES(?);', (title,))
             self._logger.debug('committing to database')
             db.commit()
         except:
@@ -121,7 +124,9 @@ class Analyzer:
         db = None
         try:
             db = self._getDb()
-            db.execute('CREATE TABLE items(key TEXT PRIMARY KEY, value TEXT);')
+            db.executescript('''
+CREATE TABLE IF NOT EXISTS items(key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS titles(id INTEGER PRIMARY KEY, name TEXT, at TEXT DEFAULT CURRENT_TIMESTAMP);''')
             db.commit()
         except:
             self.logger.error('database initializing error')
@@ -135,6 +140,7 @@ class Analyzer:
         try:
             db = self._getDb()
             db.execute('select * FROM items LIMIT 1').fetchone()
+            db.execute('select * FROM titles LIMIT 1').fetchone()
             initialized = True
         except sqlite3.OperationalError:
             self._logger.info('database {} is not initialized')
@@ -159,6 +165,7 @@ def main():
     parser.add_argument('--enc', '-e', default='utf-8', type=str, help='読み込むファイルのエンコード')
     parser.add_argument('--out', '-o', type=str, help='出力ファイルパス。markovの場合はsqlite3、countの場合はテキストファイル')
     parser.add_argument('--sep', '-s', default=':', type=str, help='出力時にkeyとvalueの間に入れるセパレーター')
+    parser.add_argument('--title', type=str, help='sqliteに出力するときに一緒に記録するタイトル名')
     parser.add_argument('--key_array', '-k', action='store_true', help='キーを単語ごとに分けた配列形式にする')
 
     args = parser.parse_args()
@@ -184,7 +191,7 @@ def main():
         logger.debug('マルコフ連鎖の作成。sqliteでの出力を行います')
         if args.out:
             analyzer.DBPATH = args.out
-        analyzer.saveMarkov_sqlite(args.word_num, key_tuple=args.key_array)
+        analyzer.saveMarkov_sqlite(args.word_num, key_tuple=args.key_array, title=args.title)
         logger.debug('sqlite出力完了')
     logger.debug('すべての操作が完了。')
             
