@@ -52,11 +52,11 @@ class Analyzer:
         self._logger.debug('counting is completed')
         return result
 
-    def makeMarkov(self, wordNum=1, dic={}, key_tuple=False, value_simple=True):
+    def makeMarkov(self, wordNum=1, dic={}, key_tuple=True, value_simple=True):
         if wordNum <= 0:
             self._logger.error('wordNum must be greater than 1')
             raise Exception('wordNum must be greater than 1')
-        self._logger.debug('making markov : option (wordNum:{}, dict input:{}, key_tuple:{} value\simple:{}'.format(wordNum, dic=={}, key_tuple, value_simple))
+        self._logger.debug('making markov : option (wordNum:{}, dict input:{}, key_tuple:{} value\simple:{}'.format(wordNum, dic!={}, key_tuple, value_simple))
         num = wordNum + 1
         result = dic
         for i in range(num+1, len(self.nodes)):
@@ -78,9 +78,9 @@ class Analyzer:
         self._logger.debug('making markov is completed')
         return result
 
-    def saveMarkov_sqlite(self, wordNum=1):
+    def saveMarkov_sqlite(self, wordNum=1, key_tuple=True):
         self._logger.debug('saving markov to database')
-        markov = self.makeMarkov(wordNum, key_tuple=False, value_simple=False)
+        markov = self.makeMarkov(wordNum, key_tuple=key_tuple, value_simple=False)
         
         self.checkDb()
 
@@ -88,6 +88,9 @@ class Analyzer:
         try:
             db = self._getDb()
             for in_key, in_value in markov.items():
+                if key_tuple:
+                    #キーを配列形式にした場合
+                    in_key = json.dumps(in_key, ensure_ascii=False)
                 res = db.execute('SELECT value FROM items WHERE key = ?', (in_key,)).fetchone()
                 if res:
                     out_value = json.loads(res[0])
@@ -99,7 +102,7 @@ class Analyzer:
                         out_value[in_value_key] = 0
                     out_value[in_value_key] += in_value[in_value_key]
 
-                db.execute('UPDATE items SET value = ? WHERE key = ?', (json.dumps(out_value), in_key))
+                db.execute('UPDATE items SET value = ? WHERE key = ?', (json.dumps(out_value, ensure_ascii=False), in_key))
             self._logger.debug('committing to database')
             db.commit()
         except:
@@ -156,6 +159,7 @@ def main():
     parser.add_argument('--enc', '-e', default='utf-8', type=str, help='読み込むファイルのエンコード')
     parser.add_argument('--out', '-o', type=str, help='出力ファイルパス。markovの場合はsqlite3、countの場合はテキストファイル')
     parser.add_argument('--sep', '-s', default=':', type=str, help='出力時にkeyとvalueの間に入れるセパレーター')
+    parser.add_argument('--key_array', '-k', action='store_true', help='キーを単語ごとに分けた配列形式にする')
 
     args = parser.parse_args()
 
@@ -180,7 +184,7 @@ def main():
         logger.debug('マルコフ連鎖の作成。sqliteでの出力を行います')
         if args.out:
             analyzer.DBPATH = args.out
-        analyzer.saveMarkov_sqlite(args.word_num)
+        analyzer.saveMarkov_sqlite(args.word_num, key_tuple=args.key_array)
         logger.debug('sqlite出力完了')
     logger.debug('すべての操作が完了。')
             
