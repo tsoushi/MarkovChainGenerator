@@ -1,8 +1,57 @@
 import re
+import time
+import datetime
 import json
 import sqlite3
 import logging
 from janome.tokenizer import Tokenizer
+
+class ProgressView:
+    def __init__(self):
+        self.name = ''
+        self.end = 0
+        self.freq = 1
+        self._lastTime = 0
+
+    def set(self, name, end):
+        self.name = name
+        self.end = end
+        self.startTime = time.time()
+
+    def setFreq(self, freq):
+        self.freq = freq
+
+    def setEnable(self, enable):
+        if enable:
+            self._enabled = True
+        else:
+            self._enabled = False
+
+    def setVerbose(self, verbose):
+        if verbose:
+            self._verbose = True
+        else:
+            self._verbose = False
+
+    def update(self, current):
+        if self._enabled:
+            now = time.time()
+            if (now - self._lastTime) > self.freq:
+                if self._verbose:
+                    per = (current/self.end)
+                    elapsedTime = now - self.startTime
+                    speed = current/elapsedTime if elapsedTime != 0 else 0
+                    predict = elapsedTime*(1-per)/per
+                    predict_datetime = (datetime.datetime.now() + datetime.timedelta(seconds=predict)).strftime('%Y-%m-%d %H:%M:%S')
+                    print('\r{} : {:>7.3f} %   {} / {}  speed:{:>.1f}/s  残り:{:>.1f}s  時刻:{}'.format(
+                        self.name, per*100, current, self.end,
+                        speed, predict, predict_datetime), end='')
+                else:
+                    print('\r{} : {:>7.3f} %   {} / {}'.format(self.name, (current/self.end)*100, current, self.end), end='')
+                self._lastTime = now
+
+            if current == self.end:
+                print()
 
 
 class Analyzer:
@@ -10,12 +59,13 @@ class Analyzer:
         self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
         self.nodes = []
         self.DBPATH = 'markov.sqlite3'
+        self.progressView = ProgressView()
 
     def _getDb(self):
         self._logger.debug('connecting database "{}"'.format(self.DBPATH))
         return sqlite3.connect(self.DBPATH)
 
-    def analyze(self, text, show_progress=False, progress_freq=100):
+    def analyze(self, text):
         self._logger.info('analyzing')
 
         text = re.sub('[^\S\n]+', '', text)
@@ -24,13 +74,10 @@ class Analyzer:
         nodes = []
         tokenizer = Tokenizer()
         self._logger.info('tokenizing : {} lines'.format(len(lines)))
-        for i in range(len(lines)):
-            nodes.extend(tokenizer.tokenize(lines[i]))
-            if show_progress:
-                if (i % progress_freq) == 0:
-                    print('\rtokenize : {:>7.3f} %   {} / {}'.format((i/len(lines))*100, i, len(lines)), end='')
-        if show_progress:
-            print()
+        self.progressView.set('tokenize', len(lines))
+        for i, line in enumerate(lines):
+            self.progressView.update(i+1)
+            nodes.extend(tokenizer.tokenize(line))
         self._logger.info('tokenizing is completed. result : {} words'.format(len(nodes)))
 
         self.nodes.extend(nodes)
@@ -41,7 +88,11 @@ class Analyzer:
     def countWord(self, num=1, key_tuple=False):
         self._logger.info('counting words')
         result = {}
+
+        self.progressView('counting word', len(self.nodes))
         for i in range(num-1, len(self.nodes)):
+            self.progressView.update(i+1)
+
             currentNodes = self.nodes[i-num+1:i+1]
             key = tuple((i.node.surface for i in currentNodes))
             if not key_tuple:
@@ -61,7 +112,11 @@ class Analyzer:
         self._logger.info('making markov : option (wordNum:{}, dict input:{}, key_tuple:{} value\simple:{}'.format(wordNum, dic!={}, key_tuple, value_simple))
         num = wordNum + 1
         result = dic
+
+        self.progressView.set('making markov', len(self.nodes))
         for i in range(num+1, len(self.nodes)):
+            self.progressView.update(i+1)
+
             currentNodes = self.nodes[i-num+1:i+1]
             key = tuple((i.node.surface for i in currentNodes[:-1]))
             value = currentNodes[-1].node.surface
@@ -89,14 +144,20 @@ class Analyzer:
         self._logger.info('saving is complete')
         return
 
+
     def mergeMarkovToDb(self, markov, key_tuple):
-        self._logger.info('merge to db')
+        self._logger.info('merging to db')
         self.checkDb()
 
         db = None
         try:
             db = self._getDb()
-            for in_key, in_value in markov.items():
+            markov_items = markov.items()
+
+            self.progressView.set('merge to db', len(markov_items))
+            for i, (in_key, in_value) in enumerate(markov_items):
+                self.progressView.update(i+1)
+
                 if key_tuple:
                     #キーを配列形式にした場合
                     in_key = json.dumps(in_key, ensure_ascii=False)
@@ -138,7 +199,9 @@ class Analyzer:
                 self._logger.debug('database is closed')
 
         markov = {}
-        for key, value in res:
+        self.progressView.set('loading from db', len(res))
+        for i, (key, value) in enumerate(res):
+            self.progressView.update(i+1)
             if key_tuple:
                 key = tuple(json.loads(key))
             markov[key] = json.loads(value)
@@ -199,8 +262,9 @@ def main():
     parser.add_argument('--word_num', '-n', default=3, type=int, help='解析するときにキーとする単語数')
     parser.add_argument('--key_array', '-k', action='store_false', help='キーを配列形式にしない')
     parser.add_argument('--sep', '-s', default=':', type=str, help='出力時にkeyとvalueの間に入れるセパレーター')
-    parser.add_argument('--show_progress', '-sp', action='store_true', help='形態素解析中に進捗度を表示する')
-    parser.add_argument('--progress_freq', '-pf', default=100, type=int, help='進捗度を表示する頻度')
+    parser.add_argument('--hide_progress', '-hp', action='store_true', help='進捗度を表示しない')
+    parser.add_argument('--hide_verbose', '-hv', action='store_true', help='進捗度の詳細を表示しない')
+    parser.add_argument('--progress_freq', '-pf', default=100, type=int, help='進捗度を表示する頻度(ミリ秒)')
 
     args = parser.parse_args()
 
@@ -215,14 +279,17 @@ def main():
     logger.addHandler(streamHandler)
     logger.setLevel(LOGLEVEL)
 
+    analyzer = Analyzer()
+    analyzer.progressView.setFreq(args.progress_freq/1000)
+    analyzer.progressView.setEnable(not args.hide_progress)
+    analyzer.progressView.setVerbose(not args.hide_verbose)
+
     if args.command == 'merge':
-        analyzer = Analyzer()
         analyzer.DBPATH = args.out
         analyzer.mergeDbToDb(args.input)
 
     if args.command in ['count', 'markov']:
-        analyzer = Analyzer()
-        analyzer.analyze(open(args.input, encoding=args.enc).read(), show_progress=args.show_progress, progress_freq=args.progress_freq)
+        analyzer.analyze(open(args.input, encoding=args.enc).read())
 
         if args.command == 'count':
             logger.info('単語のカウントを行います')
