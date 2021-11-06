@@ -45,9 +45,9 @@ class ProgressView:
                     predict_datetime = (datetime.datetime.now() + datetime.timedelta(seconds=predict)).strftime('%Y-%m-%d %H:%M:%S')
                     print('\r{} : {:>7.3f} %   {} / {}  speed:{:>.1f}/s  残り:{:>.1f}s  時刻:{}'.format(
                         self.name, per*100, current, self.end,
-                        speed, predict, predict_datetime), end='')
+                        speed, predict, predict_datetime), end=' '*10)
                 else:
-                    print('\r{} : {:>7.3f} %   {} / {}'.format(self.name, (current/self.end)*100, current, self.end), end='')
+                    print('\r{} : {:>7.3f} %   {} / {}'.format(self.name, (current/self.end)*100, current, self.end), end=' '*10)
                 self._lastTime = now
 
             if current == self.end:
