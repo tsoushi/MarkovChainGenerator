@@ -15,15 +15,30 @@ class TextGenerator:
     def _getDb(self):
         return self._db
 
-    def init(self, keyword=None):
+    def init(self, key=None):
         self._logger.info('initializing')
 
-        if keyword:
-            self._text = [*keyword]
+        if key:
+            self._text = [*key]
         else:
             self._text = self.getRandomKey()
 
-        self._logger.info('initializing is complete')
+        self._logger.info('initialized with {}'.format(self._text))
+        return 
+
+    def searchKey(self, keyword):
+        self._logger.info('searching key : {}'.format(keyword))
+        keyword = '%' + '%'.join(keyword) + '%'
+        res = self._getDb().execute('SELECT key FROM items WHERE key LIKE ?', (keyword,)).fetchall()
+        if res:
+            self._logger.info('key was found : {} keys'.format(len(res)))
+            self._logger.debug('key was found : {}'.format(res))
+            key = json.loads(random.choice(res)[0])
+            self._logger.info('select key at random : {}'.format(key))
+            return key
+        else:
+            self._logger.info('key was not found')
+            return None
 
     def getRandomKey(self):
         self._logger.info('getting key at random')
@@ -105,7 +120,8 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('dbpath', type=str, help='データベースのパス')
-    parser.add_argument('--keyword', '-k', type=str, help='テキストを生成するときに最初に使うキーワード')
+    parser.add_argument('--key', '-k', type=str, help='テキストを生成するときに最初に使うキーワード(,区切り)')
+    parser.add_argument('--keyword', '-kw', type=str, help='キーワードでキーを検索する')
     parser.add_argument('--strip', '-s', action='store_true', help='文頭と文末の余計な部分をカットする')
     parser.add_argument('--debug', '-d', default='warning', choices=['debug', 'info', 'warning'], type=str, help='表示するログレベル')
     parser.add_argument('--length', '-l', default=100, type=int, help='生成する単語数')
@@ -125,11 +141,20 @@ if __name__ == '__main__':
     logger.setLevel(LOGLEVEL)
 
     generator = TextGenerator(args.dbpath)
-    if args.keyword:
-        keyword = args.keyword.split(',')
+
+    if args.key:
+        key = args.key.split(',')
+    elif args.keyword:
+        res = generator.searchKey(args.keyword)
+        if res:
+            key = res
+        else:
+            print('キーが見つかりませんでした')
+            exit()
     else:
-        keyword = None
-    generator.init(keyword)
+        key = None
+
+    generator.init(key)
     generator.generate(args.length)
     res = generator.getText(strip=args.strip)
     print(res)
