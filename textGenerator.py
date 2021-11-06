@@ -63,10 +63,13 @@ class TextGenerator:
         for i in range(num):
             res = self.getSuffix(self._text[-3:])
             if not res:
-                self._logger.info('no candidate found')
-                return i + 1
+                self._logger.info('no candidate was found')
+                self._logger.info('generating text is complete : {} words'.format(i))
+                return i
             self._text.append(res)
-        return i + 1
+
+        self._logger.info('generating text is complete : {} words'.format(i+1))
+        return i+1
 
     def getText(self, strip=False):
         text = ''.join(self._text)
@@ -108,8 +111,9 @@ class TextGenerator:
         key = json.dumps(prefix, ensure_ascii=self._ensure_ascii)
         res = self._getDb().execute('SELECT value FROM items WHERE key = ?;', (key,)).fetchone()
         if res:
-            self._logger.debug('suffixes was found')
-            return json.loads(res[0])
+            suffixes = json.loads(res[0])
+            self._logger.debug('suffixes was found : {} suffixes'.format(len(suffixes)))
+            return suffixes
         else:
             self._logger.info('no suffixes found')
             return None
