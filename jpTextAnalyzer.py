@@ -165,7 +165,7 @@ class Analyzer:
                 if res:
                     out_value = json.loads(res[0])
                 else:
-                    db.execute('INSERT INTO items VALUES(?, "{}")', (in_key,))
+                    db.execute('INSERT INTO items(key, value) VALUES(?, "{}")', (in_key,))
                     out_value = {}
                 for in_value_key in in_value.keys():
                     if in_value_key not in out_value:
@@ -221,7 +221,7 @@ class Analyzer:
         db = None
         try:
             db = self._getDb()
-            db.execute('CREATE TABLE items(key TEXT PRIMARY KEY, value TEXT);')
+            db.execute('CREATE TABLE items(id INTEGER PRIMARY KEY, key TEXT UNIQUE, value TEXT);')
             db.commit()
         except:
             self.logger.error('database initializing error')
