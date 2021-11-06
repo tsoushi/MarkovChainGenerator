@@ -162,17 +162,23 @@ class Analyzer:
                     #キーを配列形式にした場合
                     in_key = json.dumps(in_key, ensure_ascii=False)
                 res = db.execute('SELECT value FROM items WHERE key = ?', (in_key,)).fetchone()
+                newLine = False
                 if res:
                     out_value = json.loads(res[0])
                 else:
-                    db.execute('INSERT INTO items(key, value) VALUES(?, "{}")', (in_key,))
+                    newLine = True
                     out_value = {}
                 for in_value_key in in_value.keys():
                     if in_value_key not in out_value:
                         out_value[in_value_key] = 0
                     out_value[in_value_key] += in_value[in_value_key]
 
-                db.execute('UPDATE items SET value = ? WHERE key = ?', (json.dumps(out_value, ensure_ascii=False), in_key))
+                out_value_dumped = json.dumps(out_value, ensure_ascii=False)
+                if newLine:
+                    db.execute('INSERT INTO items(key, value) VALUES(?, ?)', (in_key, out_value_dumped))
+                else:
+                    db.execute('UPDATE items SET value = ? WHERE key = ?', (out_value_dumped, in_key))
+
             self._logger.info('committing to database')
             db.commit()
         except:
