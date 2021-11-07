@@ -7,10 +7,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 class TextGenerator:
-    def __init__(self, dbpath, ensure_ascii=False):
+    def __init__(self, dbpath, keyLength=None, ensure_ascii=False):
         self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
         self._db = sqlite3.connect(dbpath)
         self._ensure_ascii = ensure_ascii
+        self.keyLength = keyLength
 
     def _getDb(self):
         return self._db
@@ -22,6 +23,8 @@ class TextGenerator:
             self._text = [*key]
         else:
             self._text = self.getRandomKey()
+        if not self.keyLength:
+            self.keyLength = len(self._text)
 
         self._logger.info('initialized with {}'.format(self._text))
         return 
@@ -61,7 +64,7 @@ class TextGenerator:
         self._logger.info('generating text : {} words'.format(num))
 
         for i in range(num):
-            res = self.getSuffix(self._text[-3:])
+            res = self.getSuffix(self._text[-self.keyLength:])
             if not res:
                 self._logger.info('no candidate was found')
                 self._logger.info('generating text is complete : {} words'.format(i))
@@ -124,6 +127,7 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('dbpath', type=str, help='データベースのパス')
+    parser.add_argument('--key_length', '-kl', type=int, help='キーの長さ')
     parser.add_argument('--key', '-k', type=str, help='テキストを生成するときに最初に使うキーワード(,区切り)')
     parser.add_argument('--keyword', '-kw', type=str, help='キーワードでキーを検索する')
     parser.add_argument('--strip', '-s', action='store_true', help='文頭と文末の余計な部分をカットする')
@@ -144,7 +148,7 @@ if __name__ == '__main__':
     logger.addHandler(streamHandler)
     logger.setLevel(LOGLEVEL)
 
-    generator = TextGenerator(args.dbpath)
+    generator = TextGenerator(args.dbpath, keyLength=args.key_length)
 
     if args.key:
         key = args.key.split(',')
