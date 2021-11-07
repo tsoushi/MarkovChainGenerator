@@ -25,6 +25,7 @@ class TextGenerator:
             self._text = self.getRandomKey()
         if not self.keyLength:
             self.keyLength = len(self._text)
+            self._logger.info('key length : {} (auto)'.format(self.keyLength))
 
         self._logger.info('initialized with {}'.format(self._text))
         return 
