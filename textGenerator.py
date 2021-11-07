@@ -7,23 +7,26 @@ import logging
 logger = logging.getLogger(__name__)
 
 class TextGenerator:
-    def __init__(self, dbpath, keyLength=None, ensure_ascii=False):
+    def __init__(self, dbpath, ensure_ascii=False):
         self._logger = logging.getLogger(f'{__name__}.{self.__class__.__name__}')
         self._db = sqlite3.connect(dbpath)
         self._ensure_ascii = ensure_ascii
-        self.keyLength = keyLength
 
     def _getDb(self):
         return self._db
 
-    def init(self, key=None):
+    def init(self, key=None, keyLength=None):
         self._logger.info('initializing')
 
         if key:
             self._text = [*key]
         else:
             self._text = self.getRandomKey()
-        if not self.keyLength:
+        #キーの長さの決定
+        if keyLength:
+            self.keyLength = keyLength
+            self._logger.info('key length : {} (manual)'.format(self.keyLength))
+        else:
             self.keyLength = len(self._text)
             self._logger.info('key length : {} (auto)'.format(self.keyLength))
 
@@ -149,7 +152,7 @@ if __name__ == '__main__':
     logger.addHandler(streamHandler)
     logger.setLevel(LOGLEVEL)
 
-    generator = TextGenerator(args.dbpath, keyLength=args.key_length)
+    generator = TextGenerator(args.dbpath)
 
     if args.key:
         key = args.key.split(',')
@@ -163,7 +166,7 @@ if __name__ == '__main__':
     else:
         key = None
 
-    generator.init(key)
+    generator.init(key, keyLength=args.key_length)
     generator.generate(args.length)
     res = generator.getText(strip=args.strip)
     print(res)
